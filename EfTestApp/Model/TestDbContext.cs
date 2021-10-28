@@ -17,10 +17,6 @@ namespace EfTestApp.Model
         {
         }
 
-        public TestDbContext([NotNull] DbContextOptions options) : base(options)
-        {
-        }
-
         public virtual DbSet<Musteri> Musteri { get; set; }
         public virtual DbSet<Siparis> Siparis { get; set; }
         public virtual DbSet<Urun> Urun { get; set; }

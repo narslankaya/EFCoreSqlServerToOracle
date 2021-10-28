@@ -29,112 +29,137 @@ namespace EfTestApp
 
         }
     }
-    public class MyDbContext : TestDbContext
+
+    namespace Model
     {
-        public MyDbContext()
-        {
-        }
+        // her defasında yeniden yazmak gerekmesin diye partial class buraya gerekli 
+        // constructor ile taşındı...
 
-        public MyDbContext(DbContextOptions<MyDbContext> options)
-            : base(options)
+        public partial class TestDbContext
         {
-        }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-
-            if (this.Database.ProviderName == "Oracle.EntityFrameworkCore")
+            public TestDbContext(DbContextOptions options) : base(options)
             {
+            }
+        }
 
-                //modelBuilder.Entity<Bu_Benim_Uzun_Isimli_Tablom>().ToTable("UZUNISIMLITABLO");
+        // biz testdbcontext değil myDbContext'i kullanacağız. 
+        public class MyDbContext : TestDbContext
+        {
+            public MyDbContext()
+            {
+            }
 
-                var guidMapper = new GuidToStringConverter(new ConverterMappingHints(unicode: false));
+            public MyDbContext(DbContextOptions<MyDbContext> options)
+                : base(options)
+            {
+            }
 
-                foreach (var table in modelBuilder.Model.GetEntityTypes())
+            protected override void OnModelCreating(ModelBuilder modelBuilder)
+            {
+                base.OnModelCreating(modelBuilder);
+
+                if (this.Database.ProviderName == "Oracle.EntityFrameworkCore")
                 {
-                    var ann = table.FindAnnotation("Relational:TableName");
-                    if (table.FullName().Length > 30)
-                    {
-                        var tblName = table.FullName()[..30];
-                        table.SetOrRemoveAnnotation("Relational:TableName", tblName);
-                    }
 
-                    if (ann != null)
-                    {
-                        var name = ann.Value.ToString().ToUpperInvariant();
-                        table.RemoveAnnotation("Relational:TableName");
-                        table.AddAnnotation("Relational:TableName", name);
-                    }
-                    else
-                    {
-                        table.AddAnnotation("Relational:TableName", table.FullName().ToUpperInvariant());
-                        table.SetTableName(table.FullName().ToUpperInvariant());
-                    }
+                    //modelBuilder.Entity<Bu_Benim_Uzun_Isimli_Tablom>().ToTable("UZUNISIMLITABLO");
 
-                    foreach (var column in table.GetProperties())
+                    // ileride kullanmak üzere converter oluşturuyoruz.
+                    var guidMapper = new GuidToStringConverter(new ConverterMappingHints(unicode: false));
+
+                    //tabloları listeliyoruz.
+                    foreach (var table in modelBuilder.Model.GetEntityTypes())
                     {
-                        if (column.Name.Length > 30)
+
+                        // tablo adı 30 karakteri geçiyor mu?
+                        if (table.FullName().Length > 30)
                         {
-                            var colName = column.Name[..30];
-                            column.SetOrRemoveAnnotation("Relational:ColumnName", colName);
+                            var tblName = table.FullName()[..30];
+                            table.SetOrRemoveAnnotation("Relational:TableName", tblName);
                         }
 
-                        var colAnn = column.FindAnnotation("Relational:ColumnName");
-                        if (colAnn != null)
+                        // tablo adı etiketi konduysa ann dolu gelir.
+                        var ann = table.FindAnnotation("Relational:TableName");
+                        if (ann != null)
                         {
-                            var colName = colAnn.Value.ToString().ToUpperInvariant();
-                            column.RemoveAnnotation("Relational:ColumnName");
-                            column.AddAnnotation("Relational:ColumnName", colName);
-                            column.SetColumnName(colName);
+                            var name = ann.Value.ToString().ToUpperInvariant();
+                            table.RemoveAnnotation("Relational:TableName");
+                            table.AddAnnotation("Relational:TableName", name);
                         }
                         else
                         {
-                            column.AddAnnotation("Relational:ColumnName", column.Name.ToUpperInvariant());
-                            column.SetColumnName(column.Name.ToUpperInvariant());
+                            table.AddAnnotation("Relational:TableName", table.FullName().ToUpperInvariant());
+                            table.SetTableName(table.FullName().ToUpperInvariant());
                         }
 
-                        if (column.PropertyInfo != null && (column.PropertyInfo.PropertyType.Name == "Guid" ||
-                            column.PropertyInfo.PropertyType.IsGenericType &&
-                            column.PropertyInfo.PropertyType.GenericTypeArguments[0].Name == "Guid"))
+                        // alanları tarıyoruz. Sadece alanlar değil aynı zamanda navigation property'leri de geliyor. Buraya dikkat.
+                        foreach (var column in table.GetProperties())
                         {
-                            var annConv = column.FindAnnotation("ValueConverter");
-                            if (annConv == null)
+                            if (column.Name.Length > 30)
                             {
-                                column.AddAnnotation("ValueConverter", guidMapper);
+                                var colName = column.Name[..30];
+                                column.SetOrRemoveAnnotation("Relational:ColumnName", colName);
+                            }
+
+                            // alan adı etiketi varsa colAnn dolu gelir.
+                            var colAnn = column.FindAnnotation("Relational:ColumnName");
+                            if (colAnn != null)
+                            {
+                                var colName = colAnn.Value.ToString().ToUpperInvariant();
+                                column.RemoveAnnotation("Relational:ColumnName");
+                                column.AddAnnotation("Relational:ColumnName", colName);
+                                column.SetColumnName(colName);
+                            }
+                            else
+                            {
+                                column.AddAnnotation("Relational:ColumnName", column.Name.ToUpperInvariant());
+                                column.SetColumnName(column.Name.ToUpperInvariant());
+                            }
+
+                            // Guid ve Guid? tipi alanları kontrol ediyoruz.
+                            if (column.PropertyInfo != null && (column.PropertyInfo.PropertyType.Name == "Guid" ||
+                                column.PropertyInfo.PropertyType.IsGenericType &&
+                                column.PropertyInfo.PropertyType.GenericTypeArguments[0].Name == "Guid"))
+                            {
+                                var annConv = column.FindAnnotation("ValueConverter");
+                                if (annConv == null)
+                                {
+                                    column.AddAnnotation("ValueConverter", guidMapper);
+                                }
+                            }
+
+                            // datetime tipindeki alanları kontrol ediyoruz.
+                            var annDataType = column.FindAnnotation("Relational:ColumnType");
+                            if (annDataType != null && annDataType.Value.ToString() == "datetime")
+                            {
+                                column.SetOrRemoveAnnotation("Relational:ColumnType", "TIMESTAMP(6)");
                             }
                         }
 
-                        var annDataType = column.FindAnnotation("Relational:ColumnType");
-                        if (annDataType != null && annDataType.Value.ToString() == "datetime")
+                        // aşağıdaki kısım indeks ve fk isimlerini kırpmak için eklendi. 
+                        foreach (var index in table.GetIndexes())
                         {
-                            column.SetOrRemoveAnnotation("Relational:ColumnType", "TIMESTAMP(6)");
+                            if (!string.IsNullOrEmpty(index.GetDatabaseName()))
+                            {
+                                var ixName = index.GetDatabaseName().ToUpperInvariant();
+                                if (ixName.Length > 30) ixName = ixName.Substring(0, 30);
+                                index.SetDatabaseName(ixName);
+                            }
+                        }
+
+                        foreach (var fk in table.GetForeignKeys())
+                        {
+                            var fkName = fk.GetConstraintName();
+                            if (!string.IsNullOrEmpty(fkName))
+                            {
+                                fkName = fkName.ToUpperInvariant();
+                                if (fkName.Length > 30) fkName = fkName.Substring(0, 30);
+                                fk.SetConstraintName(fkName);
+                            }
                         }
                     }
-                    // Aşağıdaki kısım özellikle comment yapıldı.
-                    //foreach (var index in table.GetIndexes())
-                    //{
-                    //    if (!string.IsNullOrEmpty(index.GetDatabaseName()))
-                    //    {
-                    //        var ixName = index.GetDatabaseName().ToUpperInvariant();
-                    //        if (ixName.Length > 30) ixName = ixName.Substring(0, 30);
-                    //        index.SetDatabaseName(ixName);
-                    //    }
-                    //}
-
-                    //foreach (var fk in table.GetForeignKeys())
-                    //{
-                    //    var fkName = fk.GetConstraintName();
-                    //    if (!string.IsNullOrEmpty(fkName))
-                    //    {
-                    //        fkName = fkName.ToUpperInvariant();
-                    //        if (fkName.Length > 30) fkName = fkName.Substring(0, 30);
-                    //        fk.SetConstraintName(fkName);
-                    //    }
-                    //}
                 }
             }
         }
-    }
 
+    }
 }
